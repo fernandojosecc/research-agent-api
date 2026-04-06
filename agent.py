@@ -7,7 +7,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_community.tools import TavilySearchResults
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.agents import create_openai_tools_agent, AgentExecutor
+from langchain.agents import create_agent
 from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
@@ -17,21 +17,43 @@ class ResearchAgent:
         """Initialize the research agent with Tavily search and Claude LLM"""
         logger.info("Initializing ResearchAgent")
         
-        # Initialize Tavily search tool
-        self.search_tool = TavilySearchResults(
-            max_results=5,
-            description="Search the web for current information on any topic"
-        )
+        # Check for required API keys
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        tavily_key = os.getenv("TAVILY_API_KEY")
         
-        # Initialize Claude LLM
-        self.llm = ChatAnthropic(
-            model="claude-haiku-4-5-20251001",
-            temperature=0.1,
-            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
+        if not anthropic_key:
+            logger.warning("ANTHROPIC_API_KEY not found in environment variables")
         
-        # Create the agent
-        self.agent = self._create_agent()
+        if not tavily_key:
+            logger.warning("TAVILY_API_KEY not found in environment variables")
+        
+        # Initialize Tavily search tool only if API key is available
+        if tavily_key:
+            self.search_tool = TavilySearchResults(
+                max_results=5,
+                description="Search the web for current information on any topic"
+            )
+        else:
+            logger.warning("Tavily search tool not initialized - missing API key")
+            self.search_tool = None
+        
+        # Initialize Claude LLM only if API key is available
+        if anthropic_key:
+            self.llm = ChatAnthropic(
+                model="claude-haiku-4-5-20251001",
+                temperature=0.1,
+                anthropic_api_key=anthropic_key
+            )
+        else:
+            logger.warning("Claude LLM not initialized - missing API key")
+            self.llm = None
+        
+        # Create the agent only if both tools are available
+        if self.search_tool and self.llm:
+            self.agent = self._create_agent()
+        else:
+            logger.warning("Agent not created - missing API keys")
+            self.agent = None
         
     def _create_agent(self):
         """Create the LangChain agent with research tools"""
@@ -50,24 +72,14 @@ Use the search tool to gather comprehensive information, then provide a detailed
         # Create prompt template
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
-            ("placeholder", "{chat_history}"),
             ("human", "{input}"),
-            ("placeholder", "{agent_scratchpad}"),
         ])
         
-        # Create agent with tools
+        # Create agent with tools using new API
         tools = [self.search_tool]
-        agent = create_openai_tools_agent(self.llm, tools, prompt)
+        agent = create_agent(self.llm, tools, prompt)
         
-        # Create agent executor
-        agent_executor = AgentExecutor(
-            agent=agent,
-            tools=tools,
-            verbose=True,
-            handle_parsing_errors=True
-        )
-        
-        return agent_executor
+        return agent
     
     async def research(self, topic: str, num_searches: int = 3) -> Dict[str, Any]:
         """
@@ -81,6 +93,24 @@ Use the search tool to gather comprehensive information, then provide a detailed
             Structured research report as JSON
         """
         logger.info(f"Starting research on topic: {topic} with {num_searches} searches")
+        
+        # Check if agent is initialized
+        if not self.agent:
+            logger.error("Agent not initialized - missing API keys")
+            return {
+                "title": f"Research Report: {topic}",
+                "summary": "Research cannot be performed due to missing API keys. Please set ANTHROPIC_API_KEY and TAVILY_API_KEY environment variables.",
+                "key_findings": ["API keys missing", "Cannot perform web search"],
+                "sections": [
+                    {
+                        "heading": "Configuration Error",
+                        "content": "The research agent requires both ANTHROPIC_API_KEY and TAVILY_API_KEY environment variables to be set. Please configure these and restart the server."
+                    }
+                ],
+                "sources": [],
+                "generated_at": datetime.now().isoformat(),
+                "topic": topic
+            }
         
         try:
             # Generate search queries for different angles
@@ -99,15 +129,6 @@ Use the search tool to gather comprehensive information, then provide a detailed
                 })
                 
                 all_results.append(result.get('output', ''))
-                
-                # Extract sources from the search results
-                if 'intermediate_steps' in result:
-                    for step in result['intermediate_steps']:
-                        if hasattr(step[1], 'get') and step[1].get('url'):
-                            sources.append({
-                                "title": step[1].get('title', 'Unknown'),
-                                "url": step[1].get('url')
-                            })
             
             # Combine all research results
             combined_research = "\n\n".join(all_results)
