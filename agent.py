@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Dict, Any, List
 
 from langchain_anthropic import ChatAnthropic
-from langchain_community.tools import TavilySearchResults
+from langchain_tavily import TavilySearch
 from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_agent
@@ -29,7 +29,7 @@ class ResearchAgent:
         
         # Initialize Tavily search tool only if API key is available
         if tavily_key:
-            self.search_tool = TavilySearchResults(
+            self.search_tool = TavilySearch(
                 max_results=5,
                 description="Search the web for current information on any topic"
             )
@@ -69,15 +69,13 @@ class ResearchAgent:
 
 Use the search tool to gather comprehensive information, then provide a detailed analysis of your findings."""
         
-        # Create prompt template
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("human", "{input}"),
-        ])
-        
         # Create agent with tools using new API
         tools = [self.search_tool]
-        agent = create_agent(self.llm, tools, prompt)
+        agent = create_agent(
+            model=self.llm,
+            tools=tools,
+            system_prompt=system_prompt
+        )
         
         return agent
     
@@ -125,10 +123,18 @@ Use the search tool to gather comprehensive information, then provide a detailed
                 
                 # Use the agent to search
                 result = await self.agent.ainvoke({
-                    "input": f"Search for: {query}. Find recent, credible information with sources."
+                    "messages": [{"role": "user", "content": f"Search for: {query}. Find recent, credible information with sources."}]
                 })
                 
-                all_results.append(result.get('output', ''))
+                # Extract the last message content
+                if "messages" in result and result["messages"]:
+                    last_message = result["messages"][-1]
+                    if hasattr(last_message, "content"):
+                        all_results.append(last_message.content)
+                    elif isinstance(last_message, dict) and "content" in last_message:
+                        all_results.append(last_message["content"])
+                else:
+                    all_results.append(str(result))
             
             # Combine all research results
             combined_research = "\n\n".join(all_results)
