@@ -4,9 +4,8 @@ from datetime import datetime
 from typing import Dict, Any, List
 
 from langchain_anthropic import ChatAnthropic
-from langchain_tavily import TavilySearch
+from langchain_community.tools import TavilySearchResults
 from langchain_core.messages import SystemMessage
-from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 
@@ -29,7 +28,7 @@ class ResearchAgent:
         
         # Initialize Tavily search tool only if API key is available
         if tavily_key:
-            self.search_tool = TavilySearch(
+            self.search_tool = TavilySearchResults(
                 max_results=5,
                 description="Search the web for current information on any topic"
             )
@@ -69,10 +68,10 @@ class ResearchAgent:
 
 Use the search tool to gather comprehensive information, then provide a detailed analysis of your findings."""
         
-        # Create agent with tools using new API
+        # Create agent with tools using create_agent
         tools = [self.search_tool]
         agent = create_agent(
-            model=self.llm,
+            llm=self.llm,
             tools=tools,
             system_prompt=system_prompt
         )
@@ -121,12 +120,12 @@ Use the search tool to gather comprehensive information, then provide a detailed
             for i, query in enumerate(search_queries):
                 logger.info(f"Performing search {i+1}/{num_searches}: {query}")
                 
-                # Use the agent to search
+                # Use the agent to search (new create_agent API format)
                 result = await self.agent.ainvoke({
                     "messages": [{"role": "user", "content": f"Search for: {query}. Find recent, credible information with sources."}]
                 })
                 
-                # Extract the last message content
+                # Extract the last message content from the response
                 if "messages" in result and result["messages"]:
                     last_message = result["messages"][-1]
                     if hasattr(last_message, "content"):
