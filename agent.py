@@ -118,11 +118,23 @@ Use the search tool to gather comprehensive information, then provide a detailed
         for i, query in enumerate(search_queries):
             logger.info(f"Performing search {i+1}/{num_searches}: {query}")
             try:
-                # Call Tavily directly — this returns structured results
-                raw_results = await self.search_tool.ainvoke({"query": query})
+                # Try both Tavily invoke methods
+                try:
+                    # Method 1: Dict format
+                    raw_results = await self.search_tool.ainvoke({"query": query})
+                except:
+                    # Method 2: String format
+                    raw_results = await self.search_tool.ainvoke(query)
                 
-                # raw_results is a list of dicts with url and content
-                if isinstance(raw_results, list):
+                # Debug: Log exact structure Tavily returns
+                logger.info(f"Tavily raw result type: {type(raw_results)}")
+                logger.info(f"Tavily raw result: {str(raw_results)[:500]}")
+                
+                if isinstance(raw_results, list) and len(raw_results) > 0:
+                    logger.info(f"First item type: {type(raw_results[0])}")
+                    logger.info(f"First item: {str(raw_results[0])[:300]}")
+                    if isinstance(raw_results[0], dict):
+                        logger.info(f"First item keys: {list(raw_results[0].keys())}")
                     for item in raw_results:
                         if isinstance(item, dict):
                             url = item.get("url", "")
