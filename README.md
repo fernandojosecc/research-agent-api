@@ -7,7 +7,7 @@ Autonomous AI agent that researches any topic and generates structured reports w
 ![AI Research Agent Screenshot](./screenshot.png)
 
 
-## How It Works (Numbered Steps)
+## How It Works
 
 1. **User submits a research topic** - User provides any topic through the frontend interface
 2. **LangChain agent uses Tavily to search the web** - Agent performs autonomous web searches using Tavily API
@@ -15,7 +15,7 @@ Autonomous AI agent that researches any topic and generates structured reports w
 4. **Agent decides if more searches are needed** - Intelligent decision-making for comprehensive research
 5. **Claude synthesizes findings into a structured report** - Final report generation with proper structure and citations
 
-## What Makes It An Agent (Not Just a Chatbot)
+## What Makes It A Research Agent 
 
 This is true agentic AI — not just a prompt + response. The agent:
 
