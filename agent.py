@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from datetime import datetime
 from typing import Dict, Any, List
 
@@ -125,20 +126,44 @@ Use the search tool to gather comprehensive information, then provide a detailed
                     "messages": [{"role": "user", "content": f"Search for: {query}. Find recent, credible information with sources."}]
                 })
                 
-                # Extract the last message content from the response
-                if "messages" in result and result["messages"]:
-                    last_message = result["messages"][-1]
-                    if hasattr(last_message, "content"):
-                        all_results.append(last_message.content)
-                        # Extract sources from the search tool response
-                        if isinstance(last_message, dict) and "source" in last_message:
-                            sources.append({
-                                "title": last_message.get("title", "Search Result"),
-                                "url": last_message["source"]
-                            })
-                    elif isinstance(last_message, dict) and "content" in last_message:
-                        all_results.append(last_message["content"])
-                else:
+                # Extract sources from tool messages in the response
+                for message in result.get("messages", []):
+                    if hasattr(message, "name") and message.name == "tavily_search":
+                        if hasattr(message, "content"):
+                            import json
+                            try:
+                                search_results = json.loads(message.content)
+                                if isinstance(search_results, list):
+                                    for item in search_results:
+                                        if isinstance(item, dict):
+                                            url = item.get("url", "")
+                                            title = item.get("title", url)
+                                            if url and url not in [s["url"] for s in sources]:
+                                                sources.append({
+                                                        "title": title,
+                                                        "url": url
+                                                    })
+                            except:
+                                pass
+                
+                # Also extract content and sources from assistant messages
+                for message in result.get("messages", []):
+                    if hasattr(message, "content") and not hasattr(message, "name"):
+                        # Try to extract sources from assistant message content
+                        content = message.content
+                        if "http" in content or "www." in content:
+                            # Simple URL extraction from content
+                            import re
+                            urls = re.findall(r'https?://[^\s\)"\)"', content)
+                            for url in urls:
+                                sources.append({
+                                    "title": "Source from research",
+                                    "url": url.strip()
+                                })
+                        all_results.append(content)
+                
+                # Fallback if no messages found
+                if not all_results:
                     all_results.append(str(result))
             
             # Combine all research results
@@ -198,8 +223,8 @@ Based on the following research data, generate a structured research report in J
             "content": "another detailed paragraph"
         }}
     ],
-    "sources": {sources},
-    "generated_at": "{datetime.now().isoformat()}",
+    "sources": [],
+    "generated_at": "{{datetime.now().isoformat()}}",
     "topic": "{topic}"
 }}
 
@@ -229,6 +254,19 @@ Please generate the complete JSON report following this exact structure. Ensure 
             
             report = json.loads(report_content)
             logger.info("Successfully generated structured report")
+            
+            # Add real sources to the report
+            report["sources"] = sources[:8]  # Limit to 8 sources
+            
+            # Deduplicate sources by URL
+            seen_urls = set()
+            unique_sources = []
+            for s in sources:
+                if s["url"] and s["url"] not in seen_urls:
+                    seen_urls.add(s["url"])
+                    unique_sources.append(s)
+            report["sources"] = unique_sources
+            
             return report
             
         except json.JSONDecodeError as e:
@@ -244,7 +282,7 @@ Please generate the complete JSON report following this exact structure. Ensure 
                         "content": "Research was conducted on the requested topic. Please try again for detailed results."
                     }
                 ],
-                "sources": sources,
+                "sources": sources[:8],  # Limit to 8 sources
                 "generated_at": datetime.now().isoformat(),
                 "topic": topic
             }
