@@ -118,42 +118,33 @@ Use the search tool to gather comprehensive information, then provide a detailed
         for i, query in enumerate(search_queries):
             logger.info(f"Performing search {i+1}/{num_searches}: {query}")
             try:
-                # Try both Tavily invoke methods
-                try:
-                    # Method 1: Dict format
-                    raw_results = await self.search_tool.ainvoke({"query": query})
-                except:
-                    # Method 2: String format
-                    raw_results = await self.search_tool.ainvoke(query)
+                # Call Tavily directly
+                raw_results = await self.search_tool.ainvoke({"query": query})
                 
-                # Debug: Log exact structure Tavily returns
-                logger.info(f"Tavily raw result type: {type(raw_results)}")
-                logger.info(f"Tavily raw result: {str(raw_results)[:500]}")
+                # Tavily returns a dict with a "results" key
+                if isinstance(raw_results, dict):
+                    results_list = raw_results.get("results", [])
+                elif isinstance(raw_results, list):
+                    results_list = raw_results
+                else:
+                    results_list = []
                 
-                if isinstance(raw_results, list) and len(raw_results) > 0:
-                    logger.info(f"First item type: {type(raw_results[0])}")
-                    logger.info(f"First item: {str(raw_results[0])[:300]}")
-                    if isinstance(raw_results[0], dict):
-                        logger.info(f"First item keys: {list(raw_results[0].keys())}")
-                    for item in raw_results:
-                        if isinstance(item, dict):
-                            url = item.get("url", "")
-                            title = item.get("title", "") or url
-                            content = item.get("content", "")
-                            
-                            # Add to sources if URL is new
-                            if url and url not in [s["url"] for s in sources]:
-                                sources.append({
-                                        "title": title,
-                                        "url": url
-                                    })
-                            
-                            # Add content to research data
-                            if content:
-                                all_results.append(f"Source: {url}\n{content}")
-                
-                elif isinstance(raw_results, str):
-                    all_results.append(raw_results)
+                for item in results_list:
+                    if isinstance(item, dict):
+                        url = item.get("url", "")
+                        title = item.get("title", "") or url
+                        content = item.get("content", "")
+                        
+                        # Add to sources if URL is new
+                        if url and url not in [s["url"] for s in sources]:
+                            sources.append({
+                                    "title": title,
+                                    "url": url
+                                })
+                        
+                        # Add content to research data
+                        if content:
+                            all_results.append(f"Source: {url}\n{content}")
                     
             except Exception as e:
                 logger.error(f"Search error for query '{query}': {e}")
