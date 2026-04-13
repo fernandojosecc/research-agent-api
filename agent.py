@@ -130,6 +130,12 @@ Use the search tool to gather comprehensive information, then provide a detailed
                     last_message = result["messages"][-1]
                     if hasattr(last_message, "content"):
                         all_results.append(last_message.content)
+                        # Extract sources from the search tool response
+                        if isinstance(last_message, dict) and "source" in last_message:
+                            sources.append({
+                                "title": last_message.get("title", "Search Result"),
+                                "url": last_message["source"]
+                            })
                     elif isinstance(last_message, dict) and "content" in last_message:
                         all_results.append(last_message["content"])
                 else:
