@@ -92,17 +92,17 @@ Use the search tool to gather comprehensive information, then provide a detailed
         """
         logger.info(f"Starting research on topic: {topic} with {num_searches} searches")
         
-        # Check if agent is initialized
-        if not self.agent:
-            logger.error("Agent not initialized - missing API keys")
+        # Check if search tool is initialized
+        if not self.search_tool:
+            logger.error("Search tool not initialized - missing TAVILY_API_KEY")
             return {
                 "title": f"Research Report: {topic}",
-                "summary": "Research cannot be performed due to missing API keys. Please set ANTHROPIC_API_KEY and TAVILY_API_KEY environment variables.",
-                "key_findings": ["API keys missing", "Cannot perform web search"],
+                "summary": "Research cannot be performed due to missing TAVILY_API_KEY. Please set TAVILY_API_KEY environment variable.",
+                "key_findings": ["Tavily API key missing", "Cannot perform web search"],
                 "sections": [
                     {
                         "heading": "Configuration Error",
-                        "content": "The research agent requires both ANTHROPIC_API_KEY and TAVILY_API_KEY environment variables to be set. Please configure these and restart the server."
+                        "content": "The research agent requires TAVILY_API_KEY environment variable to be set. Please configure this and restart the server."
                     }
                 ],
                 "sources": [],
@@ -110,78 +110,57 @@ Use the search tool to gather comprehensive information, then provide a detailed
                 "topic": topic
             }
         
-        try:
-            # Generate search queries for different angles
-            search_queries = self._generate_search_queries(topic, num_searches)
-            
-            # Gather information from multiple searches
-            all_results = []
-            sources = []
-            
-            for i, query in enumerate(search_queries):
-                logger.info(f"Performing search {i+1}/{num_searches}: {query}")
+        sources = []
+        all_results = []
+        
+        search_queries = self._generate_search_queries(topic, num_searches)
+        
+        for i, query in enumerate(search_queries):
+            logger.info(f"Performing search {i+1}/{num_searches}: {query}")
+            try:
+                # Call Tavily directly — this returns structured results
+                raw_results = await self.search_tool.ainvoke({"query": query})
                 
-                # Use the agent to search (create_agent API format)
-                result = await self.agent.ainvoke({
-                    "messages": [{"role": "user", "content": f"Search for: {query}. Find recent, credible information with sources."}]
-                })
-                
-                # Extract sources from tool messages in the response
-                for message in result.get("messages", []):
-                    if hasattr(message, "name") and message.name == "tavily_search":
-                        if hasattr(message, "content"):
-                            import json
-                            try:
-                                search_results = json.loads(message.content)
-                                if isinstance(search_results, list):
-                                    for item in search_results:
-                                        if isinstance(item, dict):
-                                            url = item.get("url", "")
-                                            title = item.get("title", url)
-                                            if url and url not in [s["url"] for s in sources]:
-                                                sources.append({
-                                                        "title": title,
-                                                        "url": url
-                                                    })
-                            except:
-                                pass
-                
-                # Also extract content and sources from assistant messages
-                for message in result.get("messages", []):
-                    if hasattr(message, "content") and not hasattr(message, "name"):
-                        # Try to extract sources from assistant message content
-                        content = message.content
-                        if "http" in content or "www." in content:
-                            # Simple URL extraction from content
-                            import re
-                            urls = re.findall(r'https?://[^\s\)"\)"', content)
-                            for url in urls:
+                # raw_results is a list of dicts with url and content
+                if isinstance(raw_results, list):
+                    for item in raw_results:
+                        if isinstance(item, dict):
+                            url = item.get("url", "")
+                            title = item.get("title", "") or url
+                            content = item.get("content", "")
+                            
+                            # Add to sources if URL is new
+                            if url and url not in [s["url"] for s in sources]:
                                 sources.append({
-                                    "title": "Source from research",
-                                    "url": url.strip()
-                                })
-                        all_results.append(content)
+                                        "title": title,
+                                        "url": url
+                                    })
+                            
+                            # Add content to research data
+                            if content:
+                                all_results.append(f"Source: {url}\n{content}")
                 
-                # Fallback if no messages found
-                if not all_results:
-                    all_results.append(str(result))
-            
-            # Combine all research results
-            combined_research = "\n\n".join(all_results)
-            
-            # Generate structured report using Claude
-            report = await self._generate_structured_report(
-                topic=topic,
-                research_data=combined_research,
-                sources=sources
-            )
-            
-            logger.info(f"Research completed for topic: {topic}")
-            return report
-            
-        except Exception as e:
-            logger.error(f"Error during research: {str(e)}")
-            raise e
+                elif isinstance(raw_results, str):
+                    all_results.append(raw_results)
+                    
+            except Exception as e:
+                logger.error(f"Search error for query '{query}': {e}")
+                continue
+        
+        logger.info(f"Collected {len(sources)} unique sources")
+        logger.info(f"Sources collected: {sources}")
+        
+        combined_research = "\n\n".join(all_results)
+        
+        # Generate structured report using Claude
+        report = await self._generate_structured_report(
+            topic=topic,
+            research_data=combined_research,
+            sources=sources
+        )
+        
+        logger.info(f"Research completed for topic: {topic}")
+        return report
     
     def _generate_search_queries(self, topic: str, num_searches: int) -> List[str]:
         """Generate diverse search queries for comprehensive research"""
