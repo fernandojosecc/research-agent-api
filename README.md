@@ -2,13 +2,10 @@
 
 Autonomous AI agent that researches any topic and generates structured reports with sources.
 
-## Live Demo
-
-**[Live Demo](https://research-agent-ui-pi.vercel.app)**
+## **[Live Demo](https://research-agent-ui-pi.vercel.app)**
 
 ![AI Research Agent Screenshot](./screenshot.png)
 
-*(Add a screenshot here)*
 
 ## How It Works (Numbered Steps)
 
